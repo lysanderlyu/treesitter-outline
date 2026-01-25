@@ -75,8 +75,8 @@ local QUERIES = {
   cpp = [[
     (function_definition declarator: (function_declarator declarator: (_) @function_))
     (class_specifier name: (type_identifier) @class)
-    (struct_specifier name: (type_identifier) @struct)
-    (enum_specifier name: (type_identifier) @enum)
+    (struct_specifier name: (type_identifier) @struct body:(_))
+    (enum_specifier name: (type_identifier) @enum body:(_))
     (preproc_function_def name: (identifier) @macro)
   ]],
 
