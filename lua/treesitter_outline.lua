@@ -230,8 +230,4 @@ vim.api.nvim_create_user_command(
   { desc = "Treesitter outline (functions / structs / classes / headings)" }
 )
 
--- plugin/treesitter_outline.lua
-local ok, outline = pcall(require, "treesitter_outline")
-if not ok then return end
-
 return M
