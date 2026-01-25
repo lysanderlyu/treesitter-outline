@@ -81,11 +81,12 @@ local QUERIES = {
   ]],
 
   rust = [[
-    (function_item name: (identifier) @function_)
-    (struct_item name: (type_identifier) @struct)
-    (enum_item name: (type_identifier) @enum)
-    (impl_item body: (declaration_list
-        (function_item name: (identifier) @method)))
+    (source_file (function_item name: (identifier) @function_))
+    (struct_item name: (_) @struct body: (_))
+    (enum_item name: (_) @enum)
+    (trait_item (visibility_modifier) name: (_) @impl_trait body: (_))
+    (impl_item trait: (_) @impl_trait @impl_trait type: (_) @impl_for body: (declaration_list (function_item name: (identifier) @method)))
+    (impl_item trait: (_)? type: (_) @impl_for body: (declaration_list (function_item name: (identifier) @method)))
   ]],
 
   lua = [[
@@ -167,22 +168,66 @@ function M.show_functions_telescope()
   local items = {}
 
   for _, match in query:iter_matches(root, bufnr) do
+    local trait, target, method
+    local fallback_node, fallback_capture
+  
+    --  Collect
     for id, nodes in pairs(match) do
       local capture = query.captures[id]
       local node = nodes[1]
-
-      if node then
-        local text = vim.treesitter.get_node_text(node, bufnr)
-        local icon = ICONS[capture] or ICONS.default
-        local row = select(1, node:range())
-
+  
+      if capture == "impl_trait" then
+        trait = vim.treesitter.get_node_text(node, bufnr)
+      elseif capture == "impl_for" then
+        target = vim.treesitter.get_node_text(node, bufnr)
+      elseif capture == "method" then
+        method = node
+      else
+        -- store normal symbols for fallback
+        fallback_node = node
+        fallback_capture = capture
+      end
+    end
+    -- Decide & insert ONCE
+  
+    -- impl method
+    if method then
+      local row = select(1, method:range())
+      local name = vim.treesitter.get_node_text(method, bufnr)
+      if trait then
         table.insert(items, {
-          text = string.format("%s  %s", icon, text),
-          kind = capture,
+          text = string.format("󰆧 %s::%s → %s", trait, name, target),
+          kind = "method",
           filename = vim.api.nvim_buf_get_name(bufnr),
           lnum = row + 1,
         })
+      elseif target then
+        table.insert(items, {
+          text = string.format("󰆧 %s → %s",name, target),
+          kind = "method",
+          filename = vim.api.nvim_buf_get_name(bufnr),
+          lnum = row + 1,
+        })
+       else
+         table.insert(items, {
+           text = string.format("󰆧 %s",name),
+           kind = "method",
+           filename = vim.api.nvim_buf_get_name(bufnr),
+           lnum = row + 1,
+         })
       end
+    -- normal symbol
+    elseif fallback_node and fallback_capture then
+      local row = select(1, fallback_node:range())
+      local text = vim.treesitter.get_node_text(fallback_node, bufnr)
+      local icon = ICONS[fallback_capture] or ICONS.default
+  
+      table.insert(items, {
+        text = string.format("%s  %s", icon, text),
+        kind = fallback_capture,
+        filename = vim.api.nvim_buf_get_name(bufnr),
+        lnum = row + 1,
+      })
     end
   end
 
