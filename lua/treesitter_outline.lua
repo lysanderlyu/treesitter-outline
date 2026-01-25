@@ -129,6 +129,10 @@ local QUERIES = {
   qmljs = [[
     (ui_object_definition type_name: (identifier) @class)
   ]],
+
+  diff= [[
+    (block (command (filename) @label))
+  ]],
 }
 
 ---------------------------------------------------------------------
