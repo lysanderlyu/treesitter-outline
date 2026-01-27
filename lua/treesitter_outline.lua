@@ -55,6 +55,8 @@ local LANG_MAP = {
   qmljs = "qmljs",
   rust = "rust",
   kconfig = "kconfig",
+  dts = "devicetree",
+  udevrules = "udev",
 }
 
 ---------------------------------------------------------------------
@@ -139,6 +141,14 @@ local QUERIES = {
   kconfig= [[
     (config name: (_) @label)
     (menu name: (_) @struct)
+  ]],
+
+  devicetree= [[
+    (node name: (_) @label)
+  ]],
+
+  udev= [[
+    (rule (match) @label)
   ]],
 }
 
