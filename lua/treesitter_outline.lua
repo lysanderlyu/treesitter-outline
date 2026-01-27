@@ -54,6 +54,7 @@ local LANG_MAP = {
   rst = "rst",
   qmljs = "qmljs",
   rust = "rust",
+  kconfig = "kconfig",
 }
 
 ---------------------------------------------------------------------
@@ -134,6 +135,11 @@ local QUERIES = {
   diff= [[
     (block (command (filename) @label))
   ]],
+
+  kconfig= [[
+    (config name: (_) @label)
+    (menu name: (_) @struct)
+  ]],
 }
 
 ---------------------------------------------------------------------
@@ -166,6 +172,7 @@ function M.show_functions_telescope()
   local query = vim.treesitter.query.parse(lang, query_str)
 
   local items = {}
+  local previewers = require("telescope.previewers")
 
   for _, match in query:iter_matches(root, bufnr) do
     local trait, target, method
@@ -258,7 +265,67 @@ function M.show_functions_telescope()
       end,
     },
     sorter = conf.generic_sorter({}),
-    previewer = conf.grep_previewer({}),
+    previewer = previewers.new_buffer_previewer({
+      define_preview = function(self, entry)
+        local bufnr = self.state.bufnr
+    
+        -- Use schedule to ensure the buffer is ready
+        vim.api.nvim_buf_set_lines(
+          bufnr,
+          0,
+          -1,
+          false,
+          vim.fn.readfile(entry.filename)
+        )
+    
+        vim.bo[bufnr].bufhidden = "wipe"
+        vim.bo[bufnr].swapfile = false
+    
+        local ft = vim.filetype.match({ filename = entry.filename })
+        if ft then
+          vim.bo[bufnr].filetype = ft
+        end
+        vim.schedule(function()
+          if vim.api.nvim_win_is_valid(self.state.winid) then
+            local line_count = vim.api.nvim_buf_line_count(bufnr)
+            local target_line = math.max(1, math.min(entry.lnum, line_count))
+            
+            -- 1. Move cursor
+            pcall(vim.api.nvim_win_set_cursor, self.state.winid, { target_line, 0 })
+            
+            -- 2. Enable cursorline in the preview window
+            vim.api.nvim_win_set_option(self.state.winid, "cursorline", true)
+            
+            -- 3. Force a temporary highlight on the line (Optional but helpful)
+            vim.api.nvim_buf_add_highlight(bufnr, -1, "TelescopePreviewLine", target_line - 1, 0, -1)
+    
+            -- Center the view
+            vim.api.nvim_win_call(self.state.winid, function()
+              vim.cmd("normal! zz")
+            end)
+          end
+        end)
+    
+        -- Fix: Use pcall and ensure lnum is within valid bounds
+        vim.schedule(function()
+          if vim.api.nvim_win_is_valid(self.state.winid) then
+            local line_count = vim.api.nvim_buf_line_count(bufnr)
+            local target_line = math.max(1, math.min(entry.lnum, line_count))
+            
+            pcall(vim.api.nvim_win_set_cursor, self.state.winid, { target_line, 0 })
+            
+            -- Center the view
+            vim.api.nvim_win_call(self.state.winid, function()
+              vim.cmd("normal! zz")
+            end)
+          end
+        end)
+    
+        vim.schedule(function()
+          pcall(vim.treesitter.start, bufnr)
+        end)
+      end,
+    }),
     attach_mappings = function(prompt_bufnr)
       actions.select_default:replace(function()
         local selection = action_state.get_selected_entry()
