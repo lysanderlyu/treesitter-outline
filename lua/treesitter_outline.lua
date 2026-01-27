@@ -57,6 +57,7 @@ local LANG_MAP = {
   kconfig = "kconfig",
   dts = "devicetree",
   udevrules = "udev",
+  bp = "bp",
 }
 
 ---------------------------------------------------------------------
@@ -149,6 +150,10 @@ local QUERIES = {
 
   udev= [[
     (rule (match) @label)
+  ]],
+
+  bp= [[
+    (module type: (_) @function)
   ]],
 }
 
