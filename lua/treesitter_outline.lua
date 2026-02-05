@@ -58,6 +58,7 @@ local LANG_MAP = {
   dts = "devicetree",
   udevrules = "udev",
   bp = "bp",
+  toml = "toml",
 }
 
 ---------------------------------------------------------------------
@@ -154,6 +155,11 @@ local QUERIES = {
 
   bp= [[
     (module type: (_) @function)
+  ]],
+
+  toml= [[
+    (table (dotted_key) @label)
+    (table_array_element (bare_key) @label)
   ]],
 }
 
