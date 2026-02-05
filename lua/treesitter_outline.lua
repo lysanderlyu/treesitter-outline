@@ -94,7 +94,7 @@ local QUERIES = {
   ]],
 
   lua = [[
-    (function_declaration name: (identifier) @function_)
+    (function_declaration name: (_) @function_)
     (assignment_statement
       (variable_list (identifier) @function_)
       (expression_list (function_definition)))
