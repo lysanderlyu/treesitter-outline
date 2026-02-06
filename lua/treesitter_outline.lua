@@ -47,7 +47,6 @@ local LANG_MAP = {
   cs = "c_sharp",
   make = "make",
   diff = "diff",
-  bp = "bp",
   vue = "vue",
   php = "php",
   markdown = "markdown",
@@ -154,6 +153,10 @@ local QUERIES = {
 
   bp= [[
     (module type: (_) @function)
+  ]],
+
+  make= [[
+    (rule (targets (word) @label))
   ]],
 }
 
