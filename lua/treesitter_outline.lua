@@ -162,7 +162,9 @@ local QUERIES = {
 
   toml= [[
     (table (dotted_key) @label)
+    (table (bare_key) @label)
     (table_array_element (bare_key) @label)
+    (table_array_element (dotted_key) @label)
   ]],
 }
 
