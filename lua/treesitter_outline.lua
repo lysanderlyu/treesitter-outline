@@ -84,6 +84,10 @@ local QUERIES = {
     (preproc_function_def name: (identifier) @macro)
   ]],
 
+  asm= [[
+    (label (ident) @label)
+  ]],
+
   rust = [[
     (source_file (function_item name: (identifier) @function_))
     (struct_item name: (_) @struct body: (_))
@@ -348,7 +352,8 @@ function M.show_functions_telescope()
         end)
     
         vim.schedule(function()
-          pcall(vim.treesitter.start, bufnr)
+          -- pcall(vim.treesitter.start, bufnr)
+          pcall(vim.treesitter.start, bufnr, lang)
         end)
       end,
     }),
