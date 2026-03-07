@@ -57,6 +57,7 @@ local LANG_MAP = {
   dts = "devicetree",
   udevrules = "udev",
   bp = "bp",
+  bitbake = "bitbake",
   toml = "toml",
 }
 
@@ -162,6 +163,11 @@ local QUERIES = {
 
   make= [[
     (rule (targets (word) @label))
+  ]],
+
+  bitbake= [[
+    (function_definition (identifier) @function)
+    (inherit_directive (inherit_path)) @label
   ]],
 
   toml= [[
