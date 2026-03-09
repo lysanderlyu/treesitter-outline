@@ -303,45 +303,50 @@ function M.show_functions_telescope()
     sorter = conf.generic_sorter({}),
     previewer = previewers.new_buffer_previewer({
       define_preview = function(self, entry)
-        local bufnr = self.state.bufnr
+        local preview_bufnr = self.state.bufnr
+        local filename = entry.filename or entry.path
+        if not filename then return end
     
-        -- Use schedule to ensure the buffer is ready
-        vim.api.nvim_buf_set_lines(
-          bufnr,
-          0,
-          -1,
-          false,
-          vim.fn.readfile(entry.filename)
-        )
+        -- Create a temporary buffer for the source file
+        local source_bufnr = vim.fn.bufadd(filename)
+        vim.fn.bufload(source_bufnr)
     
-        vim.bo[bufnr].bufhidden = "wipe"
-        vim.bo[bufnr].swapfile = false
+        -- Get lines from the loaded buffer
+        local lines = vim.api.nvim_buf_get_lines(source_bufnr, 0, -1, false)
     
-        local ft = vim.filetype.match({ filename = entry.filename })
+        -- Put them into preview buffer
+        vim.api.nvim_buf_set_lines(preview_bufnr, 0, -1, false, lines)
+    
+        vim.bo[preview_bufnr].bufhidden = "wipe"
+        vim.bo[preview_bufnr].swapfile = false
+    
+        local ft = vim.filetype.match({ filename = filename })
         if ft then
-          vim.bo[bufnr].filetype = ft
+          vim.bo[preview_bufnr].filetype = ft
         end
+    
         vim.schedule(function()
           if vim.api.nvim_win_is_valid(self.state.winid) then
-            local line_count = vim.api.nvim_buf_line_count(bufnr)
-            local target_line = math.max(1, math.min(entry.lnum, line_count))
-            
-            -- 1. Move cursor
-            pcall(vim.api.nvim_win_set_cursor, self.state.winid, { target_line, 0 })
-            
-            -- 2. Enable cursorline in the preview window
-            vim.api.nvim_win_set_option(self.state.winid, "cursorline", true)
-            
-            -- 3. Force a temporary highlight on the line (Optional but helpful)
-            vim.api.nvim_buf_add_highlight(bufnr, -1, "TelescopePreviewLine", target_line - 1, 0, -1)
+            local line_count = vim.api.nvim_buf_line_count(preview_bufnr)
+            local target_line = math.max(1, math.min(entry.lnum or 1, line_count))
     
-            -- Center the view
+            pcall(vim.api.nvim_win_set_cursor, self.state.winid, { target_line, 0 })
+            vim.api.nvim_win_set_option(self.state.winid, "cursorline", true)
+    
+            vim.api.nvim_buf_add_highlight(
+              preview_bufnr,
+              -1,
+              "TelescopePreviewLine",
+              target_line - 1,
+              0,
+              -1
+            )
+    
             vim.api.nvim_win_call(self.state.winid, function()
               vim.cmd("normal! zz")
             end)
           end
         end)
-    
         -- Fix: Use pcall and ensure lnum is within valid bounds
         vim.schedule(function()
           if vim.api.nvim_win_is_valid(self.state.winid) then
