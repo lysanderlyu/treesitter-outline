@@ -168,6 +168,9 @@ local QUERIES = {
   bitbake= [[
     (function_definition (identifier) @function)
     (inherit_directive (inherit_path)) @label
+    (python_function_definition name: (_) @function)
+    (anonymous_python_function (identifier) @function)
+
   ]],
 
   toml= [[
