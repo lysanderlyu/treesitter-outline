@@ -150,7 +150,9 @@ local QUERIES = {
   ]],
 
   devicetree= [[
-    (node name: (_) @label)
+    (node name: (reference) @label)
+    (node name: (identifier) @label)
+    (node name: (identifier) @impl_trait address: (unit_address) @method)
   ]],
 
   udev= [[
