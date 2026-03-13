@@ -152,6 +152,7 @@ local QUERIES = {
   devicetree= [[
     (node name: (reference) @label)
     (node name: (identifier) @label)
+    (node label: (identifier) @label name: (identifier))
     (node name: (identifier) @impl_trait address: (unit_address) @method)
   ]],
 
