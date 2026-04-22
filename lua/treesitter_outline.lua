@@ -192,7 +192,7 @@ local QUERIES = {
 function M.show_functions_telescope()
   local bufnr = vim.api.nvim_get_current_buf()
   local ft = vim.bo[bufnr].filetype
-  local lang = LANG_MAP[ft]
+  local lang = LANG_MAP[ft] or ft
 
   if not lang then
     vim.notify("Unsupported filetype: " .. ft, vim.log.levels.WARN)
@@ -205,10 +205,22 @@ function M.show_functions_telescope()
     return
   end
 
+  -- For buffers without a real file (e.g. fugitive gdiff, quickfix), Treesitter
+  -- may not have a parser registered. Try to get one; if it fails, create a
+  -- temporary parser from the buffer's content.
   local parser = vim.treesitter.get_parser(bufnr, lang)
   if not parser then
-    vim.notify("No Treesitter parser for: " .. lang, vim.log.levels.WARN)
-    return
+    -- Try to install/get the parser dynamically
+    local ok, result = pcall(vim.treesitter.start, bufnr, lang)
+    if not ok then
+      vim.notify("No Treesitter parser for: " .. lang .. " (install nvim-treesitter)", vim.log.levels.WARN)
+      return
+    end
+    parser = vim.treesitter.get_parser(bufnr, lang)
+    if not parser then
+      vim.notify("No Treesitter parser for: " .. lang, vim.log.levels.WARN)
+      return
+    end
   end
 
   local tree = parser:parse()[1]
@@ -302,7 +314,7 @@ function M.show_functions_telescope()
           value = entry,
           display = entry.text,
           ordinal = entry.kind .. " " .. entry.text,
-          filename = entry.filename,
+          filename = entry.filename or vim.api.nvim_buf_get_name(bufnr),
           lnum = entry.lnum,
           col = 1,
         }
@@ -313,14 +325,18 @@ function M.show_functions_telescope()
       define_preview = function(self, entry)
         local preview_bufnr = self.state.bufnr
         local filename = entry.filename or entry.path
-        if not filename then return end
-    
-        -- Create a temporary buffer for the source file
-        local source_bufnr = vim.fn.bufadd(filename)
-        vim.fn.bufload(source_bufnr)
-    
-        -- Get lines from the loaded buffer
-        local lines = vim.api.nvim_buf_get_lines(source_bufnr, 0, -1, false)
+        
+        local lines
+        if filename and filename ~= "" then
+          -- Create a temporary buffer for the source file
+          local source_bufnr = vim.fn.bufadd(filename)
+          vim.fn.bufload(source_bufnr)
+          lines = vim.api.nvim_buf_get_lines(source_bufnr, 0, -1, false)
+        else
+          -- Buffer has no real file (e.g. fugitive gdiff, quickfix, etc.)
+          -- Use the current buffer's content directly
+          lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+        end
     
         -- Put them into preview buffer
         vim.api.nvim_buf_set_lines(preview_bufnr, 0, -1, false, lines)
@@ -329,8 +345,30 @@ function M.show_functions_telescope()
         vim.bo[preview_bufnr].swapfile = false
     
         local ft = vim.filetype.match({ filename = filename })
+        if not ft and filename then
+          -- vim.filetype.match returns nil for fugitive:// URLs (no real file extension).
+          if filename:match("^fugitive://") then
+            -- Fugitive diff buffers display diff content, so always use 'diff' filetype
+            -- for proper diff syntax highlighting in the preview.
+            ft = "diff"
+          else
+            -- Extract the underlying file path from fugitive:// URLs to detect the filetype.
+            local real_path = filename
+            -- fugitive:///path/.git//HASH <file> → extract <file> part
+            real_path = filename:gsub("^fugitive://", "")
+              :gsub("/.git//[^/]*", "")
+              :gsub("^/", "")
+            if real_path and real_path ~= "" then
+              ft = vim.filetype.match({ filename = real_path })
+            end
+          end
+        end
         if ft then
-          vim.bo[preview_bufnr].filetype = ft
+          -- Resolve through LANG_MAP so the preview buffer's filetype matches
+          -- the Treesitter language (e.g. 'git' → 'diff', 'cpp' → 'cpp', etc.)
+          -- This ensures syntax highlighting uses the correct highlight file.
+          local preview_lang = LANG_MAP[ft] or ft
+          vim.bo[preview_bufnr].filetype = preview_lang
         end
     
         vim.schedule(function()
@@ -370,9 +408,16 @@ function M.show_functions_telescope()
           end
         end)
     
+        -- Apply Treesitter syntax highlighting on the preview buffer
         vim.schedule(function()
-          -- pcall(vim.treesitter.start, bufnr)
-          pcall(vim.treesitter.start, bufnr, lang)
+          if vim.api.nvim_win_is_valid(self.state.winid) then
+            local preview_ft = vim.bo[preview_bufnr].filetype
+            if preview_ft then
+              -- Use the preview buffer's own filetype for Treesitter, not the original buffer's lang
+              local preview_lang = LANG_MAP[preview_ft] or preview_ft
+              pcall(vim.treesitter.start, preview_bufnr, preview_lang)
+            end
+          end
         end)
       end,
     }),
