@@ -47,6 +47,7 @@ local LANG_MAP = {
   cs = "c_sharp",
   make = "make",
   diff = "diff",
+  patch = "diff",
   git = "diff",
   gitsendemail = "diff",
   vue = "vue",
