@@ -169,6 +169,7 @@ local QUERIES = {
 
   make= [[
     (rule (targets (word) @label))
+    (define_directive name: (word) @function value: (raw_text))
   ]],
 
   bitbake= [[
