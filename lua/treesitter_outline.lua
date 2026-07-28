@@ -150,6 +150,7 @@ local QUERIES = {
   kconfig= [[
     (config name: (_) @label)
     (menu name: (_) @struct)
+    (source (string (string_content) @label))
   ]],
 
   devicetree= [[
