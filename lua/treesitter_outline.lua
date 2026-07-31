@@ -145,6 +145,7 @@ local QUERIES = {
 
   diff= [[
     ((location) @function)
+    (old_file (filename) @label)
     (new_file (filename) @label)
   ]],
 
