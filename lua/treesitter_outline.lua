@@ -144,7 +144,8 @@ local QUERIES = {
   ]],
 
   diff= [[
-    (block (command (filename) @label))
+    ((location) @function)
+    (new_file (filename) @label)
   ]],
 
   kconfig= [[
