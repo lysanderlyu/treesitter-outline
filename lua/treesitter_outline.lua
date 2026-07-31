@@ -145,8 +145,8 @@ local QUERIES = {
 
   diff= [[
     ((location) @function)
-    (old_file (filename) @label)
-    (new_file (filename) @label)
+    (old_file (filename) @struct)
+    (new_file (filename) @class)
   ]],
 
   kconfig= [[
