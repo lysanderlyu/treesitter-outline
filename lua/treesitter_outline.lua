@@ -1,5 +1,11 @@
 local M = {}
 
+-- Neovim 0.11 deprecates vim.tbl_islist. Older telescope still calls it from
+-- finders.new_table and layout resolve when this picker opens.
+if vim.islist then
+  vim.tbl_islist = vim.islist
+end
+
 local has_telescope, telescope = pcall(require, "telescope")
 if not has_telescope then
   vim.notify("telescope.nvim not found", vim.log.levels.ERROR)
@@ -380,7 +386,7 @@ function M.show_functions_telescope()
             local target_line = math.max(1, math.min(entry.lnum or 1, line_count))
     
             pcall(vim.api.nvim_win_set_cursor, self.state.winid, { target_line, 0 })
-            vim.api.nvim_win_set_option(self.state.winid, "cursorline", true)
+            vim.wo[self.state.winid].cursorline = true
     
             vim.api.nvim_buf_add_highlight(
               preview_bufnr,
