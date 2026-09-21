@@ -68,6 +68,10 @@ local LANG_MAP = {
   bp = "bp",
   bitbake = "bitbake",
   toml = "toml",
+  json = "json",
+  -- JSON Lines parses line by line; the json grammar recovers from the
+  -- error node between documents and still yields every pair.
+  jsonl = "json",
 }
 
 ---------------------------------------------------------------------
@@ -194,7 +198,55 @@ local QUERIES = {
     (table_array_element (bare_key) @label)
     (table_array_element (dotted_key) @label)
   ]],
+
+  json= [[
+    (pair key: (string) @json_key value: (_) @json_value)
+  ]],
 }
+
+---------------------------------------------------------------------
+-- JSON helpers
+---------------------------------------------------------------------
+-- Values longer than this are truncated in the picker; the preview still
+-- shows the full text.
+local JSON_VALUE_MAX = 100
+
+local function strip_quotes(s)
+  return (s:gsub('^"', ""):gsub('"$', ""))
+end
+
+-- vim.treesitter.get_node_text is a C call per node and dominates runtime on
+-- multi-MB dumps (18k entries: 5.4 s with it, 0.5 s with this). Read the
+-- buffer once, then slice nodes out by byte range instead.
+local function make_text_getter(bufnr)
+  local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+  return function(node)
+    local start_row, start_col, end_row, end_col = node:range()
+    local line = lines[start_row + 1]
+    if line and start_row == end_row then
+      return line:sub(start_col + 1, end_col)
+    end
+    -- Multi-line nodes (never a key or a scalar value) fall back to the API.
+    return vim.treesitter.get_node_text(node, bufnr)
+  end
+end
+
+-- Packet exports (Wireshark → Elasticsearch) expand a bitmask into a
+-- "<field>_tree" subtree holding one "0"/"1" leaf per bit. Those leaves
+-- drown out the real fields, so anything below such a key is skipped.
+local function under_bit_tree(node, get_text)
+  local cur = node:parent()
+  while cur do
+    if cur:type() == "pair" then
+      local key = cur:field("key")[1]
+      if key and strip_quotes(get_text(key)):match("_tree$") then
+        return true
+      end
+    end
+    cur = cur:parent()
+  end
+  return false
+end
 
 ---------------------------------------------------------------------
 -- Main function
@@ -240,21 +292,30 @@ function M.show_functions_telescope()
   local items = {}
   local previewers = require("telescope.previewers")
 
+  -- Only JSON pulls text per node (json and jsonl both land here); every
+  -- other language keeps using get_node_text.
+  local json_text = (lang == "json") and make_text_getter(bufnr) or nil
+
   for _, match in query:iter_matches(root, bufnr) do
     local trait, target, method
+    local json_key, json_value
     local fallback_node, fallback_capture
-  
+
     --  Collect
     for id, nodes in pairs(match) do
       local capture = query.captures[id]
       local node = nodes[1]
-  
+
       if capture == "impl_trait" then
         trait = vim.treesitter.get_node_text(node, bufnr)
       elseif capture == "impl_for" then
         target = vim.treesitter.get_node_text(node, bufnr)
       elseif capture == "method" then
         method = node
+      elseif capture == "json_key" then
+        json_key = node
+      elseif capture == "json_value" then
+        json_value = node
       else
         -- store normal symbols for fallback
         fallback_node = node
@@ -289,6 +350,27 @@ function M.show_functions_telescope()
            lnum = row + 1,
          })
       end
+    -- JSON field: one entry per scalar, carrying its value so the picker can
+    -- be searched by content (e.g. "wlan_radio", "0x002c"). Objects and
+    -- arrays are containers, not fields, so they are left out.
+    elseif json_key and json_value and json_text then
+      local vtype = json_value:type()
+      if vtype ~= "object" and vtype ~= "array" and not under_bit_tree(json_key, json_text) then
+        local row = select(1, json_key:range())
+        local name = strip_quotes(json_text(json_key))
+        local value = json_text(json_value)
+        if #value > JSON_VALUE_MAX then
+          value = value:sub(1, JSON_VALUE_MAX) .. "…"
+        end
+
+        table.insert(items, {
+          text = string.format("%s: %s", name, value),
+          kind = "field",
+          filename = vim.api.nvim_buf_get_name(bufnr),
+          lnum = row + 1,
+        })
+      end
+
     -- normal symbol
     elseif fallback_node and fallback_capture then
       local row = select(1, fallback_node:range())
