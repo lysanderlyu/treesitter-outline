@@ -404,14 +404,75 @@ function M.show_functions_telescope()
     end
   end
 
+  -- Telescope applies default_selection_index, then resets the results
+  -- window scroll. Re-center the current entry after each empty-prompt
+  -- complete so it stays in view past the first page.
+  local function scroll_to_default(picker)
+    if picker.closed or not picker.manager or not picker.results_win then
+      return
+    end
+    if not vim.api.nvim_win_is_valid(picker.results_win) then
+      return
+    end
+
+    local prompt = ""
+    if picker.prompt_bufnr and vim.api.nvim_buf_is_valid(picker.prompt_bufnr) then
+      local ok, value = pcall(function()
+        return picker:_get_prompt()
+      end)
+      if ok then
+        prompt = value or ""
+      end
+    end
+    if prompt ~= "" then
+      return
+    end
+
+    local num_results = picker.manager:num_results()
+    if num_results < 1 then
+      return
+    end
+
+    local index = math.min(default_selection_index, num_results)
+    local row = picker:get_row(index)
+    picker:set_selection(row)
+
+    local win = picker.results_win
+    local height = vim.api.nvim_win_get_height(win)
+    local line_count = vim.api.nvim_buf_line_count(picker.results_bufnr)
+    local lnum = row + 1
+    local max_topline = math.max(1, line_count - height + 1)
+    -- Center the current entry as much as the window allows. Near either
+    -- end of the buffer it naturally shifts toward the edge.
+    local topline = lnum - math.floor(height / 2)
+    topline = math.max(1, math.min(topline, max_topline))
+    pcall(vim.api.nvim_win_call, win, function()
+      vim.fn.winrestview({ lnum = lnum, topline = topline, leftcol = 0 })
+    end)
+  end
+
   pickers.new({}, {
     prompt_title = lang:upper() .. " Outline",
     default_selection_index = default_selection_index,
+    -- Bottom→top (Telescope default): first capture at the bottom.
+    sorting_strategy = "descending",
+    on_complete = {
+      function(picker)
+        -- Run after Telescope's own post-complete cursor reset (and any
+        -- immediate empty-prompt refresh from entering insert mode).
+        vim.schedule(function()
+          vim.schedule(function()
+            scroll_to_default(picker)
+          end)
+        end)
+      end,
+    },
     layout_strategy = "horizontal",
     layout_config = {
       width = 0.9,
       height = 0.95,
       preview_width = 0.55,
+      prompt_position = "bottom",
     },
     finder = finders.new_table {
       results = items,
