@@ -391,8 +391,22 @@ function M.show_functions_telescope()
     return
   end
 
+  -- Start on the symbol at or just above the cursor (last entry with
+  -- lnum <= cursor line). Falls back to the first entry when the cursor is
+  -- above every capture.
+  local cursor_line = vim.api.nvim_win_get_cursor(0)[1]
+  local default_selection_index = 1
+  local best_lnum = -1
+  for i, item in ipairs(items) do
+    if item.lnum <= cursor_line and item.lnum >= best_lnum then
+      best_lnum = item.lnum
+      default_selection_index = i
+    end
+  end
+
   pickers.new({}, {
     prompt_title = lang:upper() .. " Outline",
+    default_selection_index = default_selection_index,
     layout_strategy = "horizontal",
     layout_config = {
       width = 0.9,
