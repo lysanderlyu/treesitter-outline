@@ -454,8 +454,8 @@ function M.show_functions_telescope()
   pickers.new({}, {
     prompt_title = lang:upper() .. " Outline",
     default_selection_index = default_selection_index,
-    -- Bottom→top (Telescope default): first capture at the bottom.
-    sorting_strategy = "descending",
+    -- Top→bottom: first capture at the top, matching document order.
+    sorting_strategy = "ascending",
     on_complete = {
       function(picker)
         -- Run after Telescope's own post-complete cursor reset (and any
@@ -472,7 +472,7 @@ function M.show_functions_telescope()
       width = 0.9,
       height = 0.95,
       preview_width = 0.55,
-      prompt_position = "bottom",
+      prompt_position = "top",
     },
     finder = finders.new_table {
       results = items,
