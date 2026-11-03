@@ -72,6 +72,11 @@ local LANG_MAP = {
   -- JSON Lines parses line by line; the json grammar recovers from the
   -- error node between documents and still yields every pair.
   jsonl = "json",
+  javascript = "javascript",
+  -- The javascript grammar handles JSX; the tsx grammar handles TSX.
+  javascriptreact = "javascript",
+  typescript = "typescript",
+  typescriptreact = "tsx",
 }
 
 ---------------------------------------------------------------------
@@ -202,6 +207,71 @@ local QUERIES = {
   json= [[
     (pair key: (string) @json_key value: (_) @json_value)
   ]],
+
+  javascript = [[
+    (function_declaration name: (identifier) @function_)
+    (generator_function_declaration name: (identifier) @function_)
+    (method_definition name: (property_identifier) @method)
+    (field_definition property: (property_identifier) @method value: (arrow_function))
+    (class_declaration name: (identifier) @class)
+    (lexical_declaration
+      (variable_declarator
+        name: (identifier) @function_
+        value: [(arrow_function) (function_expression) (generator_function)]))
+    (variable_declaration
+      (variable_declarator
+        name: (identifier) @function_
+        value: [(arrow_function) (function_expression) (generator_function)]))
+  ]],
+
+  typescript = [[
+    (function_declaration name: (identifier) @function_)
+    (generator_function_declaration name: (identifier) @function_)
+    (function_signature name: (identifier) @function_)
+    (method_definition name: (property_identifier) @method)
+    (method_signature name: (property_identifier) @method)
+    (abstract_method_signature name: (property_identifier) @method)
+    (public_field_definition name: (property_identifier) @method value: (arrow_function))
+    (class_declaration name: (type_identifier) @class)
+    (abstract_class_declaration name: (type_identifier) @class)
+    (interface_declaration name: (type_identifier) @struct)
+    (enum_declaration name: (identifier) @enum)
+    (type_alias_declaration name: (type_identifier) @variable)
+    (lexical_declaration
+      (variable_declarator
+        name: (identifier) @function_
+        value: [(arrow_function) (function_expression) (generator_function)]))
+    (variable_declaration
+      (variable_declarator
+        name: (identifier) @function_
+        value: [(arrow_function) (function_expression) (generator_function)]))
+  ]],
+
+  -- The tsx grammar is the typescript grammar plus JSX nodes, so the same
+  -- query applies. tsx-specific JSX elements are intentionally left out:
+  -- listing every <div> alongside real declarations drowns the outline.
+  tsx = [[
+    (function_declaration name: (identifier) @function_)
+    (generator_function_declaration name: (identifier) @function_)
+    (function_signature name: (identifier) @function_)
+    (method_definition name: (property_identifier) @method)
+    (method_signature name: (property_identifier) @method)
+    (abstract_method_signature name: (property_identifier) @method)
+    (public_field_definition name: (property_identifier) @method value: (arrow_function))
+    (class_declaration name: (type_identifier) @class)
+    (abstract_class_declaration name: (type_identifier) @class)
+    (interface_declaration name: (type_identifier) @struct)
+    (enum_declaration name: (identifier) @enum)
+    (type_alias_declaration name: (type_identifier) @variable)
+    (lexical_declaration
+      (variable_declarator
+        name: (identifier) @function_
+        value: [(arrow_function) (function_expression) (generator_function)]))
+    (variable_declaration
+      (variable_declarator
+        name: (identifier) @function_
+        value: [(arrow_function) (function_expression) (generator_function)]))
+  ]],
 }
 
 ---------------------------------------------------------------------
@@ -270,17 +340,15 @@ function M.show_functions_telescope()
   -- For buffers without a real file (e.g. fugitive gdiff, quickfix), Treesitter
   -- may not have a parser registered. Try to get one; if it fails, create a
   -- temporary parser from the buffer's content.
-  local parser = vim.treesitter.get_parser(bufnr, lang)
-  if not parser then
+  -- get_parser raises (rather than returning nil) when the language's parser
+  -- is not installed, so wrap it: a missing parser should warn, not abort.
+  local ok_parser, parser = pcall(vim.treesitter.get_parser, bufnr, lang)
+  if not ok_parser or not parser then
     -- Try to install/get the parser dynamically
-    local ok, result = pcall(vim.treesitter.start, bufnr, lang)
-    if not ok then
+    pcall(vim.treesitter.start, bufnr, lang)
+    ok_parser, parser = pcall(vim.treesitter.get_parser, bufnr, lang)
+    if not ok_parser or not parser then
       vim.notify("No Treesitter parser for: " .. lang .. " (install nvim-treesitter)", vim.log.levels.WARN)
-      return
-    end
-    parser = vim.treesitter.get_parser(bufnr, lang)
-    if not parser then
-      vim.notify("No Treesitter parser for: " .. lang, vim.log.levels.WARN)
       return
     end
   end
