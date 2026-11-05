@@ -74,6 +74,19 @@ local LANG_MAP = {
   jsonl = "json",
 }
 
+-- Neither Neovim nor nvim-treesitter registers a Treesitter language for the
+-- 'git' filetype that Fugitive uses for its commit/log/diff views, so a plain
+-- `vim.treesitter.start(buf)` fails there ("Parser could not be created ...
+-- language git") and the buffer keeps only Vim regex syntax. The diff grammar
+-- parses these views fine (non-diff lines become context nodes), so register
+-- the language this plugin already resolves those filetypes to. Only fill the
+-- gap: leave an existing user registration alone.
+for _, ft in ipairs({ "git", "gitsendemail" }) do
+  if vim.treesitter.language.get_lang(ft) == ft then
+    vim.treesitter.language.register("diff", ft)
+  end
+end
+
 ---------------------------------------------------------------------
 -- Treesitter queries (semantic captures)
 ---------------------------------------------------------------------
@@ -511,7 +524,14 @@ function M.show_functions_telescope()
         vim.bo[preview_bufnr].bufhidden = "wipe"
         vim.bo[preview_bufnr].swapfile = false
     
-        local ft = vim.filetype.match({ filename = filename })
+        -- Prefer the source buffer's filetype: the preview shows that buffer's
+        -- content, and matching on the path alone misses content-detected
+        -- filetypes (asm, shebang scripts) and unnamed buffers. Those came
+        -- back with an empty filetype and no Treesitter highlighting.
+        local ft = vim.bo[bufnr].filetype
+        if ft == "" then
+          ft = vim.filetype.match({ buf = bufnr })
+        end
         if not ft and filename then
           -- vim.filetype.match returns nil for fugitive:// URLs (no real file extension).
           if filename:match("^fugitive://") then
@@ -530,7 +550,7 @@ function M.show_functions_telescope()
             end
           end
         end
-        if ft then
+        if ft and ft ~= "" then
           -- Resolve through LANG_MAP so the preview buffer's filetype matches
           -- the Treesitter language (e.g. 'git' → 'diff', 'cpp' → 'cpp', etc.)
           -- This ensures syntax highlighting uses the correct highlight file.
@@ -579,10 +599,15 @@ function M.show_functions_telescope()
         vim.schedule(function()
           if vim.api.nvim_win_is_valid(self.state.winid) then
             local preview_ft = vim.bo[preview_bufnr].filetype
-            if preview_ft then
+            if preview_ft and preview_ft ~= "" then
               -- Use the preview buffer's own filetype for Treesitter, not the original buffer's lang
               local preview_lang = LANG_MAP[preview_ft] or preview_ft
-              pcall(vim.treesitter.start, preview_bufnr, preview_lang)
+              local ok, err = pcall(vim.treesitter.start, preview_bufnr, preview_lang)
+              if not ok then
+                -- Don't swallow this silently: an empty/unknown language here
+                -- is why the preview used to render as plain text.
+                vim.notify("Preview highlight failed: " .. tostring(err), vim.log.levels.DEBUG)
+              end
             end
           end
         end)
