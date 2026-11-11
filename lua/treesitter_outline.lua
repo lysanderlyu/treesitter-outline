@@ -192,9 +192,11 @@ local QUERIES = {
     (module type: (_) @function)
   ]],
 
+  -- `define ... endef` blocks are scanned from the buffer lines instead (see
+  -- scan_make_defines): the make grammar cannot parse names containing
+  -- $(...) and then misparses the entire block body as rules.
   make= [[
     (rule (targets (word) @label))
-    (define_directive name: (word) @function value: (raw_text))
   ]],
 
   bitbake= [[
@@ -262,6 +264,43 @@ local function under_bit_tree(node, get_text)
 end
 
 ---------------------------------------------------------------------
+-- Makefile define blocks
+---------------------------------------------------------------------
+-- tree-sitter-make recognizes `define name ... endef` only when the name is a
+-- plain word. A name with a variable in it (define Package/$(PKG_NAME), common
+-- in OpenWrt/LuCI makefiles) makes the parser give up on the block and read
+-- its body as rules, so recover every block from the buffer lines.
+-- GNU make allows nested defines: `stack` tracks them for indentation, and
+-- `body` marks lines inside a block so bogus rule matches there can be dropped.
+local function scan_make_defines(bufnr)
+  local items = {}
+  local body = {}
+  local stack = {}
+  local filename = vim.api.nvim_buf_get_name(bufnr)
+
+  for lnum, line in ipairs(vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)) do
+    if #stack > 0 then
+      body[lnum] = true
+    end
+
+    local name = line:match("^%s*define%s+(.-)%s*$")
+    if name then
+      table.insert(items, {
+        text = string.format("%s%s  %s", string.rep("  ", #stack), ICONS.function_, name),
+        kind = "function_",
+        filename = filename,
+        lnum = lnum,
+      })
+      stack[#stack + 1] = lnum
+    elseif line:match("^%s*endef%s*$") then
+      table.remove(stack)
+    end
+  end
+
+  return items, body
+end
+
+---------------------------------------------------------------------
 -- Main function
 ---------------------------------------------------------------------
 function M.show_functions_telescope()
@@ -308,6 +347,11 @@ function M.show_functions_telescope()
   -- Only JSON pulls text per node (json and jsonl both land here); every
   -- other language keeps using get_node_text.
   local json_text = (lang == "json") and make_text_getter(bufnr) or nil
+
+  local make_items, make_body
+  if lang == "make" then
+    make_items, make_body = scan_make_defines(bufnr)
+  end
 
   for _, match in query:iter_matches(root, bufnr) do
     local trait, target, method
@@ -387,16 +431,30 @@ function M.show_functions_telescope()
     -- normal symbol
     elseif fallback_node and fallback_capture then
       local row = select(1, fallback_node:range())
-      local text = vim.treesitter.get_node_text(fallback_node, bufnr)
-      local icon = ICONS[fallback_capture] or ICONS.default
-  
-      table.insert(items, {
-        text = string.format("%s  %s", icon, text),
-        kind = fallback_capture,
-        filename = vim.api.nvim_buf_get_name(bufnr),
-        lnum = row + 1,
-      })
+      -- A block the grammar failed to parse shows up as rules made of its
+      -- body words; drop those, scan_make_defines covers the block itself.
+      if not (make_body and make_body[row + 1]) then
+        local text = vim.treesitter.get_node_text(fallback_node, bufnr)
+        local icon = ICONS[fallback_capture] or ICONS.default
+
+        table.insert(items, {
+          text = string.format("%s  %s", icon, text),
+          kind = fallback_capture,
+          filename = vim.api.nvim_buf_get_name(bufnr),
+          lnum = row + 1,
+        })
+      end
     end
+  end
+
+  -- Merge the scanned defines with the tree-sitter rules and restore document
+  -- order, which both the cursor-relative default selection and Telescope's
+  -- ascending display rely on.
+  if lang == "make" then
+    vim.list_extend(items, make_items)
+    table.sort(items, function(a, b)
+      return a.lnum < b.lnum
+    end)
   end
 
   if vim.tbl_isempty(items) then
